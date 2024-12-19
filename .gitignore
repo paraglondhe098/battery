@@ -1,0 +1,86 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environment-specific files
+.env
+.venv/
+*.env
+*.venv
+env/
+venv/
+ENV/
+
+# Distribution/build files
+build/
+dist/
+*.egg-info/
+.eggs/
+*.wheel
+
+# Virtual environment files
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Editor/IDE-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# Testing-related
+.coverage
+*.cover
+*.pyc
+.hypothesis/
+
+# Logs and debug files
+*.log
+*.out
+*.err
+*.prof
+*.trace
+
+# PyInstaller files
+*.manifest
+*.spec
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Documentation build artifacts
+docs/_build/
+
+# Temporary files and caches
+*.tmp
+*.bak
+*.old
+*.orig
+*.rej
+*.sublime-workspace
+*.sublime-project
+
+# Operating System files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Generated or temporary files
+*.lock
+*.cache
+*.bin
+*.generated
+
+# Package management files
+poetry.lock
+Pipfile.lock
+
+# PyCharm specific files
+.idea/
+*.iml
+
+# Other ignored files
+!.gitignore
