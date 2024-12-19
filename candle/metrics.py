@@ -1,7 +1,7 @@
 import torch
 from typing import Optional, Union, Callable
 from abc import abstractmethod
-from furnance.utils.module import Module
+from candle.utils.module import Module
 
 
 class Metric(Module):

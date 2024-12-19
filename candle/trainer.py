@@ -2,10 +2,10 @@ import time
 # from torch.cuda.amp import GradScaler, autocast -> deprecated
 from torch.amp import GradScaler, autocast
 from abc import abstractmethod
-from furnance.utils.tracking import Tracker
-from furnance.utils.module import Module
-from furnance.callbacks import Callback, CallbacksList
-from furnance.metrics import Metric
+from candle.utils.tracking import Tracker
+from candle.utils.module import Module
+from candle.callbacks import Callback, CallbacksList
+from candle.metrics import Metric
 import torch
 import copy
 from torchsummary import summary

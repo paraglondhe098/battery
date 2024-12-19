@@ -1,5 +1,5 @@
 from typing import Optional, List
-from furnance.utils.module import Module
+from candle.utils.module import Module
 
 
 class Callback(Module):

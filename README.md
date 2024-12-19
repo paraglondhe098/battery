@@ -1,4 +1,4 @@
-# Furnance: PyTorch Training Framework 🔥
+Candle: PyTorch Training Framework 🔥
 
 This repository provides a versatile PyTorch training framework to simplify and enhance the model training process. It includes a trainer class with efficient training methods, famous built in pre-trained architectures, metrics tracking, custom and built-in callbacks support, and much more!
 
@@ -7,13 +7,13 @@ This repository provides a versatile PyTorch training framework to simplify and 
 Using pip:
 
 ```bash
-    pip install furnace
+    pip install pytorch-candle
 ```
 
 Using conda:
 
 ```bash
-    conda install furnace
+    conda install pytorch-candle
 ```
 
 ## Usage
@@ -22,11 +22,11 @@ Using conda:
 
 
 ```python
-from furnance import Trainer
+candle import Trainer
 import torch
-from furnance.metrics import Accuracy
-from furnance.models.vision import BsicCNN
-from furnance.callbacks import EarlyStopping, IntraEpochReport
+candle.metrics import Accuracy
+candle.models.vision import BsicCNN
+candle.callbacks import EarlyStopping, IntraEpochReport
 
 model = BsicCNN(input = (1,28,28), output = (10,))
 accuracy = Accuracy(binary_output=False)
@@ -56,10 +56,10 @@ trainer.tracker.plot('accuracy', 'val_accuracy')
 
 ### Metrics
 
-Furnace includes various metrics like `Accuracy` and `R² Score`, which can be used to evaluate model performance.
+candle includes various metrics like `Accuracy` and `R² Score`, which can be used to evaluate model performance.
 
 ```python
-from furnance.metrics import Accuracy, R2Score
+candle.metrics import Accuracy, R2Score
 
 # Initialize the Accuracy metric
 accuracy = Accuracy()
@@ -73,7 +73,7 @@ accuracy_score = accuracy(y_true, y_pred)
 Callbacks allow you to add custom functionality during training, such as early stopping or model checkpoints.
 
 ```python
-from furnance.callbacks import StateManager, Callback
+candle.callbacks import StateManager, Callback
 
 # Initialize early stopping callback
 early_stopping = StateManager(monitor='val_loss', patience=3)
