@@ -75,7 +75,7 @@ Callbacks allow you to add custom functionality during training, such as early s
 ```python
 from candle.callbacks import StateManager, Callback
 
-# Initialize early stopping callback
+# Create custom callbacks
 early_stopping = StateManager(monitor='val_loss', patience=3)
 class CustomCallback(Callback):
     def __init__(self):
