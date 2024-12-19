@@ -82,5 +82,7 @@ Pipfile.lock
 .idea/
 *.iml
 
+/examples/data
+
 # Other ignored files
 !.gitignore

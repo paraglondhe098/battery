@@ -1,0 +1,4 @@
+torch~=2.5.1+cu124
+matplotlib~=3.10.0
+torchsummary~=1.5.1
+tqdm~=4.67.1

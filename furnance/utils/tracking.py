@@ -4,7 +4,7 @@ Module for Aggregator and Tracker classes to manage and monitor statistics for m
 
 import copy
 import matplotlib.pyplot as plt
-from module import Module
+from furnance.utils.module import Module
 from typing import List, Optional, Dict, Any, Tuple, Union
 Numeric = Union[int, float]
 

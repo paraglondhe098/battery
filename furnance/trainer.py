@@ -2,15 +2,15 @@ import time
 # from torch.cuda.amp import GradScaler, autocast -> deprecated
 from torch.amp import GradScaler, autocast
 from abc import abstractmethod
-from utils.tracking import Tracker
-from callbacks import Callback, CallbacksList
-from metrics import Metric
+from furnance.utils.tracking import Tracker
+from furnance.utils.module import Module
+from furnance.callbacks import Callback, CallbacksList
+from furnance.metrics import Metric
 import torch
 import copy
 from torchsummary import summary
 from typing import Tuple, Optional, List, Callable
 from tqdm import tqdm
-from utils.module import Module
 
 
 class TrainerModule(Module):
@@ -51,7 +51,8 @@ class Trainer(TrainerModule):
         self.__current_batch = 0
 
         self.metrics = [metric.name for metric in metrics]
-        self.metric_fns = metrics
+        self.metric_fns = {metric.name: metric for metric in
+                           metrics}
 
         self.model = self.to_device(model)
         self.criterion = criterion
