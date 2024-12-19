@@ -22,11 +22,11 @@ Using conda:
 
 
 ```python
-candle import Trainer
+from candle import Trainer
 import torch
-candle.metrics import Accuracy
-candle.models.vision import BsicCNN
-candle.callbacks import EarlyStopping, IntraEpochReport
+from candle.metrics import Accuracy
+from candle.models.vision import BsicCNN
+from candle.callbacks import EarlyStopping, IntraEpochReport
 
 model = BsicCNN(input = (1,28,28), output = (10,))
 accuracy = Accuracy(binary_output=False)
@@ -59,7 +59,7 @@ trainer.tracker.plot('accuracy', 'val_accuracy')
 candle includes various metrics like `Accuracy` and `R² Score`, which can be used to evaluate model performance.
 
 ```python
-candle.metrics import Accuracy, R2Score
+from candle.metrics import Accuracy, R2Score
 
 # Initialize the Accuracy metric
 accuracy = Accuracy()
@@ -73,7 +73,7 @@ accuracy_score = accuracy(y_true, y_pred)
 Callbacks allow you to add custom functionality during training, such as early stopping or model checkpoints.
 
 ```python
-candle.callbacks import StateManager, Callback
+from candle.callbacks import StateManager, Callback
 
 # Initialize early stopping callback
 early_stopping = StateManager(monitor='val_loss', patience=3)
