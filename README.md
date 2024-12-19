@@ -1,4 +1,4 @@
-# Asteroid: PyTorch Training Framework 🔥
+# Furnance: PyTorch Training Framework 🔥
 
 This repository provides a versatile PyTorch training framework to simplify and enhance the model training process. It includes a trainer class with efficient training methods, famous built in pre-trained architectures, metrics tracking, custom and built-in callbacks support, and much more!
 
@@ -6,15 +6,15 @@ This repository provides a versatile PyTorch training framework to simplify and 
 
 Using pip:
 
-    ```bash
+```bash
     pip install furnace
-    ```
+```
 
 Using conda:
 
-    ```bash
+```bash
     conda install furnace
-    ```
+```
 
 ## Usage
 
