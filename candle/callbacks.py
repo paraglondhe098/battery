@@ -1,5 +1,6 @@
 from typing import Optional, List
 from candle.utils.module import Module
+import copy
 
 
 class Callback(Module):
@@ -255,8 +256,94 @@ class StateManager(Callback):
 
 
 class EarlyStopping(Callback):
-    def __init__(self):
+    def __init__(self,
+                 basis: str,
+                 metric_minimize: bool = True,
+                 patience: int = 5,
+                 threshold: Optional[float] = None,
+                 restore_best_weights: bool = True):
+        """
+        Early stopping callback that monitors a metric and stops training when it stops improving.
+
+        Args:
+            basis: Metric to monitor for improvement
+            metric_minimize: If True, training stops when metric stops decreasing
+            patience: Number of epochs to wait for improvement before stopping
+            threshold: Optional threshold value for the metric
+            restore_best_weights: Whether to restore model to best weights when stopped
+        """
         super().__init__()
+        self.best_epoch = 0
+        self.basis = basis
+        self.monitor = None
+        self.metric_minimize = metric_minimize
+        self.patience = patience
+        self.initial_patience = patience
+        self.threshold = threshold
+        self.best_value = float('inf') if metric_minimize else float('-inf')
+        self.restore_best_weights = restore_best_weights
+
+    def before_training_starts(self) -> Optional[str]:
+        """Initialize the metric monitor before training starts."""
+        self.monitor = self.trainer.tracker.create_link(self.basis, split="self")
+
+    def on_epoch_end(self) -> Optional[str]:
+        """Check metric value after validation and determine if training should stop."""
+        current_value = self.monitor.avg
+
+        # Check if metric improved
+        improved = (self.metric_minimize and current_value < self.best_value) or \
+                  (not self.metric_minimize and current_value > self.best_value)
+
+        if improved:
+            self.best_value = current_value
+            self.trainer.best_model_weights = copy.deepcopy(self.trainer.model.state_dict())
+            self.best_epoch = self.trainer.current_epoch
+            self.patience = self.initial_patience  # Reset patience
+        else:
+            # Check if we should reduce patience
+            threshold_check = self.threshold is None or \
+                            (self.metric_minimize and self.best_value < self.threshold) or \
+                            (not self.metric_minimize and self.best_value > self.threshold)
+
+            if threshold_check:
+                self.patience -= 1
+                # self.trainer.epoch_message += f" <es-p-{self.patience}>" <-- No use
+
+        # Check stopping conditions
+        is_last_epoch = (self.trainer.current_epoch == self.trainer.epochs)
+        should_stop = self.patience == 0 or (is_last_epoch and self.trainer.best_model_weights)
+
+        if should_stop:
+            self.trainer.STOPPER = True
+            if is_last_epoch:
+                print(f"Stopping at last epoch {self.trainer.current_epoch}")
+            else:
+                print(f"Early-stopping at epoch {self.trainer.current_epoch}, basis : {self.basis}")
+
+            if self.restore_best_weights:
+                # Restore best weights
+                self.trainer.model.load_state_dict(self.trainer.best_model_weights)
+
+                # Build summary message
+                summary = [
+                    "Restoring best weights...",
+                    f"Best epoch: {self.best_epoch}",
+                    f"Training loss: {self.trainer.tracker.metrics['loss'].records[self.best_epoch]:.4f}",
+                    f"Validation loss: {self.trainer.tracker.metrics['val_loss'].records[self.best_epoch]:.4f}"
+                ]
+
+                # Add metric summaries if metrics exist
+                if self.trainer.metrics:
+                    for metric in self.trainer.metrics:
+                        summary.extend([
+                            f"Training {metric}: {self.trainer.tracker.metrics[metric].records[self.best_epoch]:.4f}",
+                            f"Validation {metric}: {self.trainer.tracker.metrics[f'val_{metric}'].records[self.best_epoch]:.4f}"
+                        ])
+
+                return "\n\t".join(summary)
+
+        return None
 
 
 class GradientClipping(Callback):

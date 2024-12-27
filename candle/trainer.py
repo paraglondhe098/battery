@@ -213,21 +213,23 @@ class Trainer(TrainerModule):
             self.__train_fn(train_loader)
             self.__validation_fn(val_loader)
             epoch_statistics = tracker.message("--> Metrics: ")
-            tracker.snap_and_reset_all()
+
 
             # Run callbacks
             responses = self.__run_callbacks(pos="on_epoch_end")
-            print(epoch_statistics)
-
-            if self.display_time_elapsed:
-                end_time = time.time()
-                print(f"Time elapsed: {end_time - start_time} s")
 
             for response in responses:
                 print(response)
 
             if self.STOPPER:
                 break
+
+            tracker.snap_and_reset_all()
+            print(epoch_statistics)
+
+            if self.display_time_elapsed:
+                end_time = time.time()
+                print(f"Time elapsed: {end_time - start_time} s")
         self.__run_callbacks(pos="after_training_ends")
         if self.best_model_weights is None:
             self.best_model_weights = copy.deepcopy(self.model.state_dict())
