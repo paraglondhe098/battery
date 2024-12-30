@@ -15,15 +15,19 @@ class Module(ABC):
             Defaults to class name if not provided.
         device (torch.device, optional): Device to use (CPU/GPU).
             If None, device attribute will not be created.
+        logger (logging.Logger, optional): Logger object for logging.
+        Defaults to console logger with level INFO.
     """
 
-    def __init__(self, name: Optional[str] = None, device: Optional[torch.device] = None):
+    def __init__(self, name: Optional[str] = None,
+                 device: Optional[torch.device] = None,
+                 logger: Optional[logging.Logger] = None):
         self.name = name or self.__class__.__name__
         if device is not None:
             self.device = device
 
         # Initialize logger for this module instance
-        self.logger = self._init_logger()
+        self.logger = logger or self._init_logger()
 
     def _init_logger(self) -> logging.Logger:
         """Initializes and configures a logger for the module.
@@ -38,7 +42,7 @@ class Module(ABC):
             # Create console handler with formatting
             handler = logging.StreamHandler()
             formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                '%(message)s'
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)

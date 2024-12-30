@@ -1,17 +1,21 @@
-from typing import Optional, List
+import logging
+from typing import Optional, List, Union
 from candle.utils.module import Module
 import copy
 
 
 class Callback(Module):
 
-    def __init__(self, priority: float = None):
+    def __init__(self, priority: float = None, logger: Optional[logging.Logger] = None):
         super().__init__(name="Callback")
         self._trainer = None
         self.priority = priority
+        self.__use_trainer_logger = True if logger is None else False
 
     def set_trainer(self, trainer: 'TrainerModule'):
         self._trainer = trainer
+        if self.__use_trainer_logger:
+            self.logger = trainer.logger
 
     @property
     def trainer(self) -> 'TrainerModule':
@@ -184,7 +188,7 @@ class CallbacksList(Module):
             else:
                 raise TypeError("callbacks should be inherited from Callback class (from torchtrainer.callbacks)")
         else:
-            print(f"Callback {callback} is already present")
+            self.logger.info(f"Callback {callback} is already present")
 
     def remove(self, callback: Callback):
         if callback in self.callbacks:
@@ -199,7 +203,7 @@ class CallbacksList(Module):
                 if response:
                     responses.append(response)
             except Exception as e:
-                print(f"Error in callback {cb} during calling of method '{pos}': {e}")
+                self.logger.warning(f"Error in callback {cb} during calling of method '{pos}': {e}")
                 raise e
         return responses
 
@@ -282,29 +286,37 @@ class EarlyStopping(Callback):
         self.threshold = threshold
         self.best_value = float('inf') if metric_minimize else float('-inf')
         self.restore_best_weights = restore_best_weights
+        self.best_weights_restored = False
 
     def before_training_starts(self) -> Optional[str]:
         """Initialize the metric monitor before training starts."""
-        self.monitor = self.trainer.tracker.create_link(self.basis, split="self")
+        self.monitor = self.tracker.create_link(self.basis, split="self")
+        self.reset_state()
+
+    def reset_state(self):
+        self.patience = self.initial_patience
+        self.best_value = float('inf') if self.metric_minimize else float('-inf')
+        self.best_epoch = 0
 
     def on_epoch_end(self) -> Optional[str]:
         """Check metric value after validation and determine if training should stop."""
-        current_value = self.monitor.avg
+        current_value = self.monitor.latest
+        self.logger.debug(current_value)
 
         # Check if metric improved
         improved = (self.metric_minimize and current_value < self.best_value) or \
-                  (not self.metric_minimize and current_value > self.best_value)
+                   (not self.metric_minimize and current_value > self.best_value)
 
         if improved:
             self.best_value = current_value
-            self.trainer.best_model_weights = copy.deepcopy(self.trainer.model.state_dict())
+            self.trainer.best_model_weights = copy.deepcopy(self.model.state_dict())
             self.best_epoch = self.trainer.current_epoch
             self.patience = self.initial_patience  # Reset patience
         else:
             # Check if we should reduce patience
             threshold_check = self.threshold is None or \
-                            (self.metric_minimize and self.best_value < self.threshold) or \
-                            (not self.metric_minimize and self.best_value > self.threshold)
+                              (self.metric_minimize and self.best_value < self.threshold) or \
+                              (not self.metric_minimize and self.best_value > self.threshold)
 
             if threshold_check:
                 self.patience -= 1
@@ -317,31 +329,45 @@ class EarlyStopping(Callback):
         if should_stop:
             self.trainer.STOPPER = True
             if is_last_epoch:
-                print(f"Stopping at last epoch {self.trainer.current_epoch}")
+                self.logger.info(f"Stopping at last epoch {self.trainer.current_epoch}")
             else:
-                print(f"Early-stopping at epoch {self.trainer.current_epoch}, basis : {self.basis}")
+                self.logger.info(f"Early-stopping at epoch {self.trainer.current_epoch}, basis : {self.basis}"
+                                 f"{'↑' if self.metric_minimize else '↓'}")
 
             if self.restore_best_weights:
                 # Restore best weights
                 self.trainer.model.load_state_dict(self.trainer.best_model_weights)
+                self.best_weights_restored = True
 
                 # Build summary message
                 summary = [
                     "Restoring best weights...",
                     f"Best epoch: {self.best_epoch}",
-                    f"Training loss: {self.trainer.tracker.metrics['loss'].records[self.best_epoch]:.4f}",
-                    f"Validation loss: {self.trainer.tracker.metrics['val_loss'].records[self.best_epoch]:.4f}"
+                    f"Training loss: {self.tracker.metrics['loss'].records[self.best_epoch]:.4f}",
+                    f"Validation loss: {self.tracker.metrics['val_loss'].records[self.best_epoch]:.4f}"
                 ]
 
                 # Add metric summaries if metrics exist
                 if self.trainer.metrics:
                     for metric in self.trainer.metrics:
                         summary.extend([
-                            f"Training {metric}: {self.trainer.tracker.metrics[metric].records[self.best_epoch]:.4f}",
-                            f"Validation {metric}: {self.trainer.tracker.metrics[f'val_{metric}'].records[self.best_epoch]:.4f}"
+                            f"Training {metric}: {self.tracker.metrics[metric].records[self.best_epoch]:.4f}",
+                            f"Validation {metric}: {self.tracker.metrics[f'val_{metric}'].records[self.best_epoch]:.4f}"
                         ])
 
-                return "\n\t".join(summary)
+                return_val = ("-" * 100)+"\n"
+                return_val += "\n\t".join(summary)
+                #
+                return return_val
+
+        return None
+
+    def after_training_ends(self) -> Optional[str]:
+        if self.best_weights_restored:
+            res = {"epoch": self.best_epoch}
+            for metric_name in self.tracker.metrics:
+                res[metric_name] = self.tracker.metrics[metric_name].records[self.best_epoch]
+            self.trainer.final_metrics = res
 
         return None
 

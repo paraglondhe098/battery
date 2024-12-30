@@ -99,15 +99,14 @@ class Aggregator(Module):
             link.update(val, count)
 
     @property
-    def current_val(self):
+    def latest(self):
         """
         Retrieve the most recent snapshot value.
 
         Returns:
             float: The last recorded snapshot value, or 0 if no records exist.
         """
-        """Retrieve latest statistic"""
-        return self.records[-1] if self.records else 0.
+        return self.avg or (self.records[-1] if self.records else 0.)
 
 
 class Tracker(Module):
@@ -236,6 +235,12 @@ class Tracker(Module):
         history.update(self.others)
         return history
 
+    def get_final_values(self, epoch):
+        res = {"epoch": epoch}
+        for metric_name in self.metrics:
+            res[metric_name] = self.metrics[metric_name].latest
+        return res
+
     def plot(self, *metrics, figsize: Tuple = (10, 6), colors: Optional[str] = None,
              line_styles: Optional[List[str]] = None, markers: Optional[List[str]] = None):
         """
@@ -248,8 +253,9 @@ class Tracker(Module):
             line_styles (Optional[List[str]]): Line styles for the metrics.
             markers (Optional[List[str]]): Markers for the lines.
         """
-        if not isinstance(metrics, str):
-            raise AttributeError(f"metrics should be of type *List[str] got {type(metrics)}")
+        for metric in metrics:
+            if not isinstance(metric, str):
+                raise AttributeError(f"metric should be of type str got {type(metric)}")
         # Generate a default list of colors if none are provided
         if colors is None:
             # Generate a list of colors using a color map
@@ -264,7 +270,7 @@ class Tracker(Module):
 
         for idx, metric_name in enumerate(metrics):
             if metric_name not in self.metrics:
-                print(f"Warning: Metric '{metric_name}' not found in metrics.")
+                self.logger.warning(f"Metric '{metric_name}' not found in metrics.")
                 continue
 
             metric = self.metrics[metric_name].records

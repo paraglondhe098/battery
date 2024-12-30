@@ -36,6 +36,7 @@ pip-delete-this-directory.txt
 *.cover
 *.pyc
 .hypothesis/
+temp/
 
 # Logs and debug files
 *.log
@@ -47,6 +48,7 @@ pip-delete-this-directory.txt
 # PyInstaller files
 *.manifest
 *.spec
+upload_script.txt
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
@@ -79,7 +81,7 @@ poetry.lock
 Pipfile.lock
 
 # PyCharm specific files
-.idea/
+#.idea/
 *.iml
 
 /examples/data
