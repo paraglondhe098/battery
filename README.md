@@ -3,7 +3,12 @@
 
 [//]: # (Candle: PyTorch Training Framework 🕯️)
 
-This repository provides a versatile PyTorch training framework to simplify and enhance the model training process. It includes a trainer class with efficient training methods, famous built in pre-trained architectures, metrics tracking, custom and built-in callbacks support, and much more!
+A versatile PyTorch training framework to simplify and enhance the model training process.
+It includes a trainer class with efficient training methods, 
+famous built in pre-trained architectures, metrics tracking, custom and built-in 
+callbacks support, and much more!
+
+______________________________________________________________________
 
 ## Installation
 
@@ -19,12 +24,19 @@ Using conda:
     conda install pytorch-candle
 ```
 
+<details>
+  <summary>Advanced install options</summary>
+    <!-- following section will be skipped from PyPI description -->
+</details>
+
 ## Usage
 
 ### Trainer
+Use trainer class to train your model with ease. Use custom model or use built-in models available in `candle.models` module.
 
-
+Example: Training a simple CNN model on MNIST dataset.
 ```python
+# Step 0: Import necessary modules
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
@@ -33,6 +45,7 @@ from candle.metrics import Accuracy, Precision
 from candle.models.vision import BasicCNNClassifier
 from candle.callbacks import EarlyStopping
 
+# Step 1: Initiate dataset and dataloader (See PyTorch documentation for more details)
 transform = transforms.Compose([
     transforms.Resize((64, 64)),
     transforms.ToTensor(),
@@ -46,12 +59,20 @@ batch_size = 64
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
+# Step 2: Define a Model using torch.nn.Module or use built-in models
+# (stay tuned for more models in future releases.)
 model = BasicCNNClassifier(input_shape = (1,64,64), num_output_classes=10)
+
+# Step 3: Define metrics, loss function, optimizer, callbacks, etc. and pass them to Trainer
+# (See documentation for more details on each parameter.)
 accuracy = Accuracy(binary_output=False)
 precision = Precision(binary_output=False)
 loss_fn = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 es = EarlyStopping(basis="val_accuracy", metric_minimize=False, patience=10, threshold=0.85)
+
+# Note: Metric values over training and validation are stored in a tracker object which can be accessed by callbacks.
+# training metrics are stored in tracker.metrics['{metric_name}'] and validation metrics are stored in tracker.metrics['val_{metric_name}']
 
 trainer = Trainer( model,
                  criterion=loss_fn,
@@ -63,16 +84,20 @@ trainer = Trainer( model,
                  device=torch.device('cuda'),
                  use_amp=True)
 
+# Optional: Check model summary (Only works when correct input shape is provided)
 trainer.model_summary()
 
-# Start training
+# Step 3: Start training
 history = trainer.fit(train_loader,val_loader, epochs=10)
 
-# Plot metrics over time (epoch)
+# Step 4: Plot results and save progress
+# (Metrics over epochs)
 trainer.tracker.plot('accuracy', 'val_accuracy')
 trainer.tracker.plot('loss', 'val_loss')
 
-trainer.save_progress(path="path/to/save", metric_name="val_accuracy") # save folder will include final val_accuracy value in name (defaults to val_loss)
+trainer.save_progress(path="path/to/save", metric_name="val_accuracy")
+# Saves model, optimizer, scheduler, tracker, and other necessary objects in a folder.
+# save folder will include final val_accuracy value (rounded upto 2 digits) in name (defaults to val_loss)
 ```
 
 ### Metrics
@@ -85,11 +110,15 @@ import torch
 
 class CustomMetric(Metric):
     def __init__(self):
-        super().__init__(name = "your_metric_name",
-                         pre_transform= lambda x: (x[0], x[1].squeeze()) # pre transform labels or outputs.
+        super().__init__(name = "your_metric_name", 
+                         # It's important to give a name to the metric to access it using that name.
+                         # By default, it's the class name.
+                         pre_transform= lambda x: (x[0], x[1].squeeze()) 
+                         # pre transform labels or outputs.
                          )
     def calculate(self, y_true: torch.Tensor, y_pred: torch.Tensor) -> float:
-        # Custom metric logic. Return average value for a batch (scalar output).
+        # Overwrite this function to define custom metric logic.
+        # Return average value for a batch (scalar output).
         pass
     
 # Initialize the metric
