@@ -7,7 +7,6 @@ from candle.utils.tracking import Tracker
 from candle.utils.module import Module
 from candle.callbacks import Callback, CallbacksList
 from candle.metrics import Metric
-from candle.development.warnings import experimental
 import torch
 import copy
 from torchsummary import summary
