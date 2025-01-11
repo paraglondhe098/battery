@@ -71,9 +71,6 @@ loss_fn = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 es = EarlyStopping(basis="val_accuracy", metric_minimize=False, patience=10, threshold=0.85)
 
-# Note: Metric values over training and validation are stored in a tracker object which can be accessed by callbacks.
-# training metrics are stored in tracker.metrics['{metric_name}'] and validation metrics are stored in tracker.metrics['val_{metric_name}']
-
 trainer = Trainer( model,
                  criterion=loss_fn,
                  input_shape=(1,64,64),
