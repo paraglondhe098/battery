@@ -5,11 +5,64 @@ Module for Aggregator and Tracker classes to manage and monitor statistics for m
 import copy
 import matplotlib.pyplot as plt
 from candle.utils.module import Module
+from abc import abstractmethod
 from typing import List, Optional, Dict, Any, Tuple, Union
+
 Numeric = Union[int, float]
 
 
-class Aggregator(Module):
+class TrainingVariable(Module):
+    """
+    Abstract class for training variables.
+    """
+
+    def __init__(self, name: Optional[str] = None):
+        super().__init__(name=name or "TrainingVariable")
+        self.records: List[float] = []
+
+    @abstractmethod
+    def update(self, *args, **kwargs):
+        pass
+
+    def __getitem__(self, idx) -> Numeric:
+        return self.records[idx]
+
+    def __len__(self) -> int:
+        return len(self.records)
+
+
+class NonMetricVariable(TrainingVariable):
+    """
+    Tracks a non-metric variable.
+
+    Attributes:
+        value (Any): The current value of the variable.
+    """
+
+    def __init__(self, name: Optional[str] = None):
+        """
+        Initializes the NonMetricVariable instance.
+
+        Args:
+            name (str, optional): Optional name for the variable. Defaults to "NonMetricVariable".
+        """
+        super().__init__(name=name or "NonMetricVariable")
+
+    def update(self, value: Any):
+        """
+        Update the variable with a new value.
+
+        Args:
+            value (Any): New value to assign.
+        """
+        self.records.append(value)
+
+    @property
+    def latest(self):
+        return self.records[-1] if self.records else None
+
+
+class Aggregator(TrainingVariable):
     """
     Aggregates and tracks statistics for a specific metric.
 
@@ -20,6 +73,7 @@ class Aggregator(Module):
         records (List[float]): History of snapshot averages.
         links (List['Aggregator']): Linked Aggregators for hierarchical updates.
     """
+
     def __init__(self, name: Optional[str] = None):
         """
         Initializes the Aggregator instance.
@@ -29,8 +83,7 @@ class Aggregator(Module):
         """
         super().__init__(name=name or "Aggregator")
         self.count, self.avg, self.sum = 0., 0., 0.
-        self.records: List[float] = []
-        self.links: List['Aggregator'] = []
+        self.links: Optional[List['Aggregator']] = []
 
     def reset(self):
         """Reset all statistics to their initial state."""
@@ -117,6 +170,7 @@ class Tracker(Module):
         metrics (Dict[str, Aggregator]): Dictionary of metrics and their associated Aggregators.
         others (Dict[str, Any]): Additional attributes (e.g., epochs, learning rate).
     """
+
     def __init__(self, metrics: List[str]):
         """
         Initializes the Tracker with specified metrics.
@@ -129,7 +183,33 @@ class Tracker(Module):
             metric_name: Aggregator(f"agg_{metric_name}")
             for metric_name in metrics
         }
-        self.others: Dict[str, Any] = {}  # epochs, lr, etc.
+        self.others: Dict[str, TrainingVariable] = {}  # epochs, lr, etc.
+
+    @property
+    def variables_(self):
+        return self.metrics.keys() | self.others.keys()
+
+    def __getitem__(self, key):
+        if key in self.metrics:
+            return self.metrics[key]
+        elif key in self.others:
+            return self.others[key]
+        else:
+            raise KeyError(f"Invalid key: {key}")
+
+    def __len__(self):
+        return len(self.metrics) + len(self.others)
+
+    def add_variable(self, var_name: str):
+        """
+        Add a new variable to the tracker.
+
+        Args:
+            var_name (str): Name of the variable.
+        """
+        if var_name in self.metrics or var_name in self.others:
+            raise KeyError(f"Variable '{var_name}' already exists in tracker.")
+        self.others[var_name] = NonMetricVariable()
 
     def update(self, metric_val_pairs: Dict[str, Numeric], count: Numeric = 1):
         """
@@ -217,10 +297,6 @@ class Tracker(Module):
         for metric in self.metrics.values():
             metric.snap_and_reset()
 
-    def __len__(self):
-        """Return the number of tracked metrics."""
-        return len(self.metrics)
-
     def get_history(self) -> Dict[str, List[float]]:
         """
         Get the complete history of all metrics.
@@ -232,7 +308,10 @@ class Tracker(Module):
             metric_name: metric.records
             for metric_name, metric in self.metrics.items()
         }
-        history.update(self.others)
+        history.update({
+            var_name: var.records
+            for var_name, var in self.others.items()
+        })
         return history
 
     def get_final_values(self, epoch):

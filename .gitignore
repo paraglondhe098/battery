@@ -49,6 +49,7 @@ temp/
 *.manifest
 *.spec
 upload_script.txt
+candle/callbacks_old.py
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/

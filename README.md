@@ -79,9 +79,10 @@ trainer = Trainer( model,
                  metrics=[accuracy, precision],
                  callbacks=[es],
                  device=torch.device('cuda'),
-                 use_amp=True)
+                 use_amp=True # Mixed precision training
+                   )
 
-# Optional: Check model summary (Only works when correct input shape is provided)
+# Optional: Check model summary (Only works when correct input shape is provided).
 trainer.model_summary()
 
 # Step 3: Start training
@@ -179,8 +180,9 @@ print("accuracy value at 20th epoch was: " + trainer.tracker.metrics['accuracy']
 
 accuracy_link = trainer.tracker.create_link("accuracy", split = "child")
 print("Latest accuracy (linked) value: ",accuracy_link.latest)
-# Linking as child helps to aggregate metrics over different times (time less than an epoch) to report 
-# in between epochs. Other modes: "clone" and "self" (read docs).
+# Linking as child helps to aggregate metrics over different times (time less than an epoch) to track them
+# at different periods (per batch or per k-batches).
+# Other modes: "clone" and "self" (read docs).
 ```
 
 

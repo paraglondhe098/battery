@@ -50,7 +50,7 @@ class Trainer(TrainerModule):
         super().__init__(name="SimpleTrainer", device=(device or torch.device('cpu')), logger=logger)
         self.epochs = None
         self.messages_joiner = "  ||  " if report_in_one_line else "\n"
-        self.epoch_message = None
+        self.epoch_message = ""
 
         self.num_batches = None
         self.batch_size = None
@@ -65,7 +65,8 @@ class Trainer(TrainerModule):
         self.criterion = criterion
         self.optimizer = optimizer
         self.clear_cuda_cache = clear_cuda_cache
-        self.scaler = GradScaler() if (self.device.type == 'cuda' and use_amp) else None
+        self.use_amp = use_amp and self.device.type == 'cuda'
+        self.scaler = GradScaler(enabled=self.use_amp)
         self.tracker = self.init_tracker()
 
         self.roff = roff
@@ -136,24 +137,17 @@ class Trainer(TrainerModule):
 
             # One Batch Training
             self.optimizer.zero_grad()
-            if self.scaler:
-                # Mixed precision training
-                with autocast(device_type=self.device.type):
-                    outputs = self.model(inputs)
-                    loss = self.criterion(outputs, labels)
-                self.scaler.scale(loss).backward()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-            else:
-                # Normal training
+
+            with autocast(device_type=self.device.type, enabled=self.use_amp):
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, labels)
-                self.__run_callbacks(pos="before_backward_pass")
-                loss.backward()
-                self.optimizer.step()
+            self.__run_callbacks(pos="before_backward_pass")
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
 
-            self.tracker.update({"loss": loss.item()})
             with torch.no_grad():
+                self.tracker.update({"loss": loss.item()})
                 self.tracker.update({metric: self.metric_fns[metric](labels, outputs) for metric in self.metrics})
             self.__run_callbacks(pos="on_train_batch_end")
         self.__run_callbacks(pos="on_train_end")
@@ -166,11 +160,7 @@ class Trainer(TrainerModule):
         for inputs, labels in val_loader:
             self.__run_callbacks(pos="on_test_batch_begin")
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            if self.scaler:
-                with autocast(device_type=self.device.type):
-                    outputs = self.model(inputs)
-                    val_loss = self.criterion(outputs, labels)
-            else:
+            with autocast(device_type=self.device.type, enabled=self.use_amp):
                 outputs = self.model(inputs)
                 val_loss = self.criterion(outputs, labels)
 
@@ -226,9 +216,7 @@ class Trainer(TrainerModule):
             self.logger.info(epoch_statistics)
 
             # Run callbacks
-            responses = self.__run_callbacks(pos="on_epoch_end")
-            for response in responses:
-                self.logger.info(response)
+            self.__run_callbacks(pos="on_epoch_end")
 
             tracker.snap_and_reset_all()
 

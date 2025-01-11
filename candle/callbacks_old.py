@@ -288,7 +288,7 @@ class EarlyStopping(Callback):
         self.restore_best_weights = restore_best_weights
         self.best_weights_restored = False
 
-    def before_training_starts(self) -> Optional[str]:
+    def before_training_starts(self):
         """Initialize the metric monitor before training starts."""
         self.monitor = self.tracker.create_link(self.basis, split="self")
         self.reset_state()
@@ -298,7 +298,7 @@ class EarlyStopping(Callback):
         self.best_value = float('inf') if self.metric_minimize else float('-inf')
         self.best_epoch = 0
 
-    def on_epoch_end(self) -> Optional[str]:
+    def on_epoch_end(self):
         """Check metric value after validation and determine if training should stop."""
         current_value = self.monitor.latest
         self.logger.debug(current_value)
@@ -328,11 +328,12 @@ class EarlyStopping(Callback):
 
         if should_stop:
             self.trainer.STOPPER = True
+            dashes = ("-" * 100) + "\n"
             if is_last_epoch:
-                self.logger.info(f"Stopping at last epoch {self.trainer.current_epoch}")
+                self.logger.info(dashes + f"Stopping at last epoch {self.trainer.current_epoch}")
             else:
-                self.logger.info(f"Early-stopping at epoch {self.trainer.current_epoch}, basis : {self.basis}"
-                                 f"{'↑' if self.metric_minimize else '↓'}")
+                self.logger.info(dashes + f"Early-stopping at epoch {self.trainer.current_epoch}, basis : {self.basis}"
+                                          f"{'↑' if self.metric_minimize else '↓'}")
 
             if self.restore_best_weights:
                 # Restore best weights
@@ -355,12 +356,8 @@ class EarlyStopping(Callback):
                             f"Validation {metric}: {self.tracker.metrics[f'val_{metric}'].records[self.best_epoch]:.4f}"
                         ])
 
-                return_val = ("-" * 100)+"\n"
-                return_val += "\n\t".join(summary)
-                #
-                return return_val
-
-        return None
+                summary = dashes + "\n\t".join(summary)
+                self.logger.info(summary)
 
     def after_training_ends(self) -> Optional[str]:
         if self.best_weights_restored:
@@ -370,6 +367,22 @@ class EarlyStopping(Callback):
             self.trainer.final_metrics = res
 
         return None
+
+
+class LRTracker(Callback):
+    def __init__(self):
+        super().__init__()
+
+    def before_training_starts(self):
+        self.tracker.add_variable("lr")
+
+    @staticmethod
+    def get_lr(optimizer):
+        for param_group in optimizer.param_groups:
+            return param_group['lr']
+
+    def on_epoch_end(self):
+        self.tracker['lr'].update(self.get_lr(self.trainer.optimizer))
 
 
 class GradientClipping(Callback):
@@ -410,19 +423,3 @@ class RemoteMonitor(Callback):
 class NoiseInjector(Callback):
     def __init__(self):
         super().__init__()
-
-
-class LRTracker(Callback):
-    def __init__(self):
-        super().__init__()
-
-    def on_train_begin(self):
-        self.tracker['lr'] = []
-
-    @staticmethod
-    def get_lr(optimizer):
-        for param_group in optimizer.param_groups:
-            return param_group['lr']
-
-    def on_epoch_end(self):
-        self.tracker['lr'].append(self.get_lr(self.trainer.optimizer))
