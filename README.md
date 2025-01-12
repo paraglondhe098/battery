@@ -194,8 +194,8 @@ history = trainer.fit(train_loader,val_loader, epochs=10)
 trainer.tracker.plot('accuracy', 'val_accuracy')
 trainer.tracker.plot('loss', 'val_loss')
 
-print("latest accuracy value: " + trainer.tracker.metrics['accuracy'].latest)
-print("accuracy value at 20th epoch was: " + trainer.tracker.metrics['accuracy'].records[20])
+print("latest accuracy value: " + trainer.tracker['accuracy'].latest)
+print("accuracy value at 20th epoch was: " + trainer.tracker['accuracy'][20])
 
 accuracy_link = trainer.tracker.create_link("accuracy", split = "child")
 print("Latest accuracy (linked) value: ",accuracy_link.latest)
