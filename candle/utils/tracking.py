@@ -34,9 +34,6 @@ class TrainingVariable(Module):
 class NonMetricVariable(TrainingVariable):
     """
     Tracks a non-metric variable.
-
-    Attributes:
-        value (Any): The current value of the variable.
     """
 
     def __init__(self, name: Optional[str] = None):
