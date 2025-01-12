@@ -1,5 +1,5 @@
 
-![Alt text](style/board_logo_old2.jpg)
+![Alt text](style/board_logo_new.png)
 
 [//]: # (Candle: PyTorch Training Framework 🕯️)
 
