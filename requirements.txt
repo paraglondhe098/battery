@@ -1,4 +1,5 @@
-torch~=2.5.1+cu124
-matplotlib~=3.10.0
-torchsummary~=1.5.1
-tqdm~=4.67.1
+torch>=1.10.0
+# better to install from https://pytorch.org/get-started/locally/
+matplotlib>=3.1.0
+torchsummary>=1.1.0
+tqdm>=4.1.0

@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.0.5'
+VERSION = '0.0.10'
 DESCRIPTION = 'Training module for training PyTorch models'
 LONG_DESCRIPTION = 'A versatile PyTorch training framework to simplify and enhance the model training process. It includes a trainer class with efficient training methods, famous built in pre-trained architectures, metrics tracking, custom and built-in callbacks support, and much more!'
 
@@ -16,7 +16,7 @@ setup(
     url="https://github.com/paraglondhe/pytorch-candle",
     packages=find_packages(),
     install_requires=[
-        'torch>=1.9.0',
+        'torch>=1.10.0',
         'matplotlib',
         'tqdm',
         'torchsummary'

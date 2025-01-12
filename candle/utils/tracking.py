@@ -267,7 +267,7 @@ class Tracker(Module):
             links[metric] = self.create_link(metric, split)
         return links
 
-    def message(self, prefix=""):
+    def message(self, prefix: str = ""):
         """
         Generate a summary message for the current averages.
 
