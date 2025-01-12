@@ -10,7 +10,7 @@ from candle.metrics import Metric
 import torch
 import copy
 from torchsummary import summary
-from typing import Tuple, Optional, List, Callable
+from typing import Tuple, Optional, List, Callable, Dict
 from tqdm import tqdm
 from datetime import datetime
 import os
@@ -229,8 +229,11 @@ class Trainer(TrainerModule):
         self.final_metrics = self.tracker.get_final_values(self.current_epoch)
         self.__run_callbacks(pos="after_training_ends")
         if self.best_model_weights is None:
-            self.best_model_weights = copy.deepcopy(self.model.state_dict())
+            self.best_model_weights = copy.deepcopy(self.get_model_weights())
         return tracker.get_history()
+
+    def get_model_weights(self):
+        return self.model.state_dict()
 
     @torch.no_grad()
     def predict(self, data_loader: torch.utils.data.DataLoader) -> torch.Tensor:
