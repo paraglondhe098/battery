@@ -12,8 +12,8 @@ ______________________________________________________________________
 
 <div align="center">
 
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pytorch-candlee)](https://pypi.org/project/pytorch-candle/)
-[![PyPI Status](https://badge.fury.io/py/pytorch-candlew.svg)](https://badge.fury.io/py/pytorch-candlee)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/pytorch-candle)](https://pypi.org/project/pytorch-candle/)
+[![PyPI Status](https://badge.fury.io/py/pytorch-candle.svg)](https://badge.fury.io/py/pytorch-candle)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/pytorch-candle)](https://pepy.tech/project/pytorch-candle)
 
 [//]: # ([![Conda]&#40;https://img.shields.io/conda/v/conda-forge/pytorch_candle?label=conda&color=success&#41;]&#40;https://anaconda.org/conda-forge/candle&#41;)
