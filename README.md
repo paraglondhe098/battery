@@ -21,7 +21,13 @@ ______________________________________________________________________
 
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/w/paraglondhe098/pytorch-candle)
 [![license](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+<a target="_blank" href="https://www.youtube.com/@Neuralogic-j8i">
+  <img src="style/get_started_n.png" height="36px" alt="Get started"/>
+</a>
 </div>
+
+______________________________________________________________________
 
 ## Installation
 
