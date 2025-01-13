@@ -31,6 +31,7 @@ class EarlyStopping(Callback):
         self.best_value = float('inf') if metric_minimize else float('-inf')
         self.restore_best_weights = restore_best_weights
         self.best_weights_restored = False
+        self.__dashes = "-" * 100
 
     def before_training_starts(self):
         """Initialize the metric monitor before training starts."""
@@ -53,7 +54,7 @@ class EarlyStopping(Callback):
 
         if improved:
             self.best_value = current_value
-            self.trainer.best_model_weights = copy.deepcopy(self.model.state_dict())
+            self.trainer.best_state_dict = copy.deepcopy(self.model.state_dict())
             self.best_epoch = self.trainer.current_epoch
             self.patience = self.initial_patience  # Reset patience
         else:
@@ -64,24 +65,23 @@ class EarlyStopping(Callback):
 
             if threshold_check:
                 self.patience -= 1
-                # self.trainer.epoch_message += f" <es-p-{self.patience}>" <-- No use
+                # self.trainer.epoch_headline += f" <es-p-{self.patience}>" <-- No use
 
         # Check stopping conditions
         is_last_epoch = (self.trainer.current_epoch == self.trainer.epochs)
-        should_stop = self.patience == 0 or (is_last_epoch and self.trainer.best_model_weights)
+        should_stop = self.patience == 0 or (is_last_epoch and self.trainer.best_state_dict)
 
         if should_stop:
             self.trainer.STOPPER = True
-            dashes = ("-" * 100) + "\n"
             if is_last_epoch:
-                self.logger.info(dashes + f"Stopping at last epoch {self.trainer.current_epoch}")
+                self.logger.info(f"Stopping at last epoch {self.trainer.current_epoch}")
             else:
-                self.logger.info(dashes + f"Early-stopping at epoch {self.trainer.current_epoch}, basis : {self.basis}"
-                                          f"{'↑' if self.metric_minimize else '↓'}")
+                self.logger.info(f"Early-stopping at epoch {self.trainer.current_epoch}, basis : {self.basis}"
+                                 f"{'↑' if self.metric_minimize else '↓'}")
 
             if self.restore_best_weights:
                 # Restore best weights
-                self.trainer.model.load_state_dict(self.trainer.best_model_weights)
+                self.trainer.model.load_state_dict(self.trainer.best_state_dict)
                 self.best_weights_restored = True
 
                 # Build summary message
@@ -100,7 +100,7 @@ class EarlyStopping(Callback):
                             f"Validation {metric}: {self.tracker.metrics[f'val_{metric}'].records[self.best_epoch]:.4f}"
                         ])
 
-                summary = dashes + "\n\t".join(summary)
+                summary = self.__dashes + "\n" + "\n\t".join(summary) + "\n" + self.__dashes
                 self.logger.info(summary)
 
     def after_training_ends(self):

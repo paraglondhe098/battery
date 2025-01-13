@@ -1,3 +1,2 @@
-from .trainer import Trainer, TrainerModule
-
+from .trainers import Trainer
 __version__ = "0.0.10"

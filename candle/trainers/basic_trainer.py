@@ -1,88 +1,44 @@
 import logging
-import time
 # from torch.cuda.amp import GradScaler, autocast -> deprecated
 from torch.amp import GradScaler, autocast
-from abc import abstractmethod
 from candle.utils.tracking import Tracker
-from candle.utils.module import Module
-from candle.callbacks import Callback, CallbacksList
+from candle.callbacks import Callback, ConsoleLogger
+from candle.trainers import ProgressBar
+from candle.trainers.base import TrainerBlueprint
 from candle.metrics import Metric
 import torch
-import copy
-from torchsummary import summary
-from typing import Tuple, Optional, List, Callable, Dict
-from tqdm import tqdm
+from typing import Optional, List
 from datetime import datetime
 import os
 
 
-class TrainerModule(Module):
-    def __init__(self, name: str,
-                 device: Optional[torch.device] = None,
-                 logger: Optional[logging.Logger] = None):
-        super().__init__(name, device, logger)
+class BasicTrainer(TrainerBlueprint):
+    default_callbacks = [ConsoleLogger()]
 
-    @abstractmethod
-    def fit(self, X, Y):
-        pass
-
-    @abstractmethod
-    def predict(self, X):
-        pass
-
-
-class Trainer(TrainerModule):
     def __init__(self, model: torch.nn.Module,
                  criterion: torch.nn.Module,
-                 input_shape: Tuple[int, ...],
                  optimizer: torch.optim.Optimizer,
                  metrics: Optional[List[Metric]] = None,
                  callbacks: Optional[List[Callback]] = None,
-                 display_time_elapsed: bool = False,
-                 roff: int = 5,
-                 report_in_one_line: bool = True,
                  clear_cuda_cache: bool = True,
                  use_amp: bool = True,
                  device: Optional[torch.device] = None,
                  logger: Optional[logging.Logger] = None):
 
-        super().__init__(name="SimpleTrainer", device=(device or torch.device('cpu')), logger=logger)
-        self.epochs = None
-        self.messages_joiner = "  ||  " if report_in_one_line else "\n"
-        self.epoch_message = ""
-
-        self.num_batches = None
-        self.batch_size = None
-        self.__current_epoch = 0
-        self.__current_batch = 0
-
         self.metrics = [metric.name for metric in metrics]
+        super().__init__(name="SimpleTrainer", callbacks=callbacks,
+                         clear_cuda_cache=clear_cuda_cache,
+                         use_amp=use_amp, logger=logger,
+                         device=(device or torch.device('cpu')),
+                         )
         self.metric_fns = {metric.name: metric for metric in
                            metrics}
-
+        self.progress_bar = ProgressBar([])
         self.model = self.to_device(model)
         self.criterion = criterion
         self.optimizer = optimizer
-        self.clear_cuda_cache = clear_cuda_cache
-        self.use_amp = use_amp and self.device.type == 'cuda'
         self.scaler = GradScaler(enabled=self.use_amp)
-        self.tracker = self.init_tracker()
-
-        self.roff = roff
-        self.input_shape = input_shape
-        self.display_time_elapsed = display_time_elapsed
-
-        self.STOPPER = False
-        self.external_events = set()
-        self.best_model_weights = None
-        self.final_metrics = {}
-
-        self.std_pos = {'on_train_batch_begin', 'on_train_batch_end', 'on_epoch_begin', 'on_epoch_end',
-                        'on_test_batch_begin', 'on_test_batch_end', 'on_predict_batch_begin', 'on_predict_batch_end',
-                        'on_train_begin', 'on_train_end', 'on_test_begin', 'on_test_end', 'on_predict_begin',
-                        'on_predict_end', 'before_training_starts', 'after_training_ends', 'before_backward_pass'}
-
-        self.callbacks = CallbacksList(callbacks=callbacks, trainer=self)
+        self.best_state_dict = None
 
     def init_tracker(self):
         temp = self.metrics + ["loss"]
@@ -94,45 +50,16 @@ class Trainer(TrainerModule):
         tracker.logger = self.logger
         return tracker
 
-    def model_summary(self):
-        summary(self.model, self.input_shape)
-
-    def add_callback(self, callback: Callback) -> None:
-        """
-        Adds a callback to the Trainer.
-
-        Note:
-            If you're adding a custom callback function, make sure it's inherited
-            from the `Callback` abstract base class and overwrites the `run` method,
-            otherwise the callback will not run!
-
-        Args:
-            callback (Callback): Callback object to add. Must be an instance of
-                                 a class inherited from the `Callback` base class.
-
-        """
-        self.callbacks.append(callback)
-
-    def remove_callback(self, callback: Callback) -> None:
-        """
-        Removes a callback from the Trainer.
-
-        Args:
-            callback: Callback object to remove.
-        """
-        self.callbacks.remove(callback)
-
-    def __run_callbacks(self, pos: str) -> List[Optional[str]]:
-        return self.callbacks.run_all(pos)
-
-    def __train_fn(self, train_loader: torch.utils.data.DataLoader) -> None:
+    def train(self, train_loader: torch.utils.data.DataLoader) -> None:
 
         # Set to training mode
         self.model.train()
-        self.__run_callbacks(pos="on_train_begin")
-        for self.__current_batch, (inputs, labels) in tqdm(enumerate(train_loader), self.epoch_message):
+        self._run_callbacks(pos="on_train_begin")
+        for inputs, labels in self.progress_bar(position='train',
+                                                iterable=train_loader,
+                                                desc=self.epoch_headline):
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            self.__run_callbacks(pos="on_train_batch_begin")
+            self._run_callbacks(pos="on_train_batch_begin")
 
             # One Batch Training
             self.optimizer.zero_grad()
@@ -140,7 +67,7 @@ class Trainer(TrainerModule):
             with autocast(device_type=self.device.type, enabled=self.use_amp):
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, labels)
-            self.__run_callbacks(pos="before_backward_pass")
+            self._run_callbacks(pos="before_backward_pass")
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optimizer)
             self.scaler.update()
@@ -148,16 +75,16 @@ class Trainer(TrainerModule):
             with torch.no_grad():
                 self.tracker.update({"loss": loss.item()})
                 self.tracker.update({metric: self.metric_fns[metric](labels, outputs) for metric in self.metrics})
-            self.__run_callbacks(pos="on_train_batch_end")
-        self.__run_callbacks(pos="on_train_end")
+            self._run_callbacks(pos="on_train_batch_end")
+        self._run_callbacks(pos="on_train_end")
 
     @torch.no_grad()
-    def __validation_fn(self, val_loader: torch.utils.data.DataLoader) -> None:
+    def validate(self, val_loader: torch.utils.data.DataLoader) -> None:
         # Set to the evaluation mode
         self.model.eval()
-        self.__run_callbacks(pos="on_test_begin")
-        for inputs, labels in val_loader:
-            self.__run_callbacks(pos="on_test_batch_begin")
+        self._run_callbacks(pos="on_test_begin")
+        for inputs, labels in self.progress_bar(position='validation', iterable=val_loader, desc="Validation: "):
+            self._run_callbacks(pos="on_test_batch_begin")
             inputs, labels = inputs.to(self.device), labels.to(self.device)
             with autocast(device_type=self.device.type, enabled=self.use_amp):
                 outputs = self.model(inputs)
@@ -166,74 +93,27 @@ class Trainer(TrainerModule):
             self.tracker.update({"val_loss": val_loss.item()})
             self.tracker.update(
                 {"val_" + metric: self.metric_fns[metric](labels, outputs) for metric in self.metrics})
-            self.__run_callbacks(pos="on_test_batch_end")
-        self.__run_callbacks(pos="on_test_end")
+            self._run_callbacks(pos="on_test_batch_end")
+        self._run_callbacks(pos="on_test_end")
 
-    @property
-    def current_batch(self):
-        return self.__current_batch
+    def pre_run(self):
+        pass
 
-    @property
-    def current_epoch(self):
-        return self.__current_epoch
+    def reset(self):
+        self.__current_epoch = 0
+        self.STOPPER = False
+        self.best_state_dict = None
+        self.final_metrics = {}
+        self.tracker = self.init_tracker()
 
-    def fit(self, train_loader: torch.utils.data.DataLoader, val_loader: torch.utils.data.DataLoader,
-            epochs: int = 1, epoch_start: int = 0):
-        """
-        Trains the model for the specified number of epochs.
+    def post_run(self):
+        pass
 
-        Args:
-            train_loader (torch.utils.data.DataLoader): DataLoader for training datasets.
-            val_loader (torch.utils.data.DataLoader): DataLoader for validation datasets.
-            epoch_start (int): from what epoch number we should start
-            epochs (int): No. of epochs to run for
-
-        Returns:
-            None
-        """
-        self.epochs = epochs
-        self.num_batches = len(train_loader)
-        self.batch_size = train_loader.batch_size
-        on_gpu = True if self.device.type == 'cuda' else False
-        tracker = self.tracker
-        # The main Training loop
-
-        start_time = time.time()
-        self.__run_callbacks(pos="before_training_starts")
-        for self.__current_epoch in range(epoch_start, epoch_start + self.epochs):
-            self.__run_callbacks(pos="on_epoch_begin")
-
-            if on_gpu and self.clear_cuda_cache:
-                torch.cuda.empty_cache()
-
-            self.epoch_message = f"EPOCH {self.current_epoch}: "
-
-            # Train model
-            self.__train_fn(train_loader)
-            self.__validation_fn(val_loader)
-            epoch_statistics = tracker.message("--> Metrics: ")
-            self.logger.info(epoch_statistics)
-
-            # Run callbacks
-            self.__run_callbacks(pos="on_epoch_end")
-
-            tracker.snap_and_reset_all()
-
-            if self.display_time_elapsed:
-                end_time = time.time()
-                self.logger.info(f"Time elapsed: {end_time - start_time} s")
-            self.logger.info("-" * 100)
-            if self.STOPPER:
-                break
-
-        self.final_metrics = self.tracker.get_final_values(self.current_epoch)
-        self.__run_callbacks(pos="after_training_ends")
-        if self.best_model_weights is None:
-            self.best_model_weights = copy.deepcopy(self.get_model_weights())
-        return tracker.get_history()
-
-    def get_model_weights(self):
+    def get_state_dict(self):
         return self.model.state_dict()
+
+    def load_state_dict(self, state_dict):
+        return self.model.load_state_dict(state_dict)
 
     @torch.no_grad()
     def predict(self, data_loader: torch.utils.data.DataLoader) -> torch.Tensor:
@@ -246,18 +126,18 @@ class Trainer(TrainerModule):
             torch.Tensor: Concatenated model predictions for all input batches.
         """
         self.model.eval()
-        self.__run_callbacks(pos="on_predict_begin")
+        self._run_callbacks(pos="on_predict_begin")
 
         all_predictions = []
         for batch_idx, data in enumerate(data_loader):
-            self.__run_callbacks(pos="on_predict_batch_begin")
+            self._run_callbacks(pos="on_predict_batch_begin")
             data = data.to(self.device)
             predictions = self.model(data)
             all_predictions.append(predictions)
-            self.__run_callbacks(pos="on_predict_batch_end")
+            self._run_callbacks(pos="on_predict_batch_end")
 
         all_predictions = torch.cat(all_predictions, dim=0)
-        self.__run_callbacks(pos="on_predict_end")
+        self._run_callbacks(pos="on_predict_end")
         return all_predictions
 
     def save_progress(self, path: str, metric_name: str = "val_loss", save_trainer: bool = False):
@@ -291,7 +171,8 @@ class Trainer(TrainerModule):
 
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            metric_value = self.final_metrics.get(metric_name, None) or self.tracker.metrics[metric_name].latest
+            metric_value = (self.final_metrics.get(metric_name, None) if self.final_metrics else None) or \
+                           self.tracker.metrics[metric_name].latest
             save_dir = os.path.join(path, f"{timestamp}=={metric_name}=={metric_value:.4f}")
             os.makedirs(save_dir, exist_ok=True)
 
@@ -367,67 +248,3 @@ class Trainer(TrainerModule):
         except Exception as e:
             self.logger.warning(f"Failed to load progress!")
             raise e
-
-    class __CallbackTemplate(Callback):
-        def __init__(self):
-            super().__init__()
-
-    def add_event(self, pos: str):
-        """
-        Write a custom callback event without explicitly creating a new callback class.
-        """
-
-        def decorator(event: Callable) -> Optional[Callable]:
-            # Check if the event is already registered
-            if event.__name__ in self.external_events:
-                return None  # Do nothing if event already exists
-
-            # Create a new callback template
-            ct = self.__CallbackTemplate()
-
-            # Register the event if the position is valid
-            if pos in self.std_pos:
-                setattr(ct, pos, event)
-            else:
-                raise AttributeError(f"Invalid method '{pos}'. Must be one of {self.std_pos}.")
-
-            # Add the callback template to the callback list
-            self.external_events.add(event.__name__)
-            self.add_callback(ct)
-
-            return event
-
-        return decorator
-
-
-class AdversarialTrainer(TrainerModule):
-    def __init__(self):
-        super().__init__(name="Adversarial Trainer")
-
-    def fit(self, X, Y):
-        pass
-
-    def predict(self, X):
-        pass
-
-
-class LLMTrainer(TrainerModule):
-    def __init__(self):
-        super().__init__(name="LLM Trainer")
-
-    def fit(self, X, Y):
-        pass
-
-    def predict(self, X):
-        pass
-
-
-class SemiSupervisedTrainer(TrainerModule):
-    def __init__(self):
-        super().__init__(name="Semi Supervised Trainer")
-
-    def fit(self, X, Y):
-        pass
-
-    def predict(self, X):
-        pass

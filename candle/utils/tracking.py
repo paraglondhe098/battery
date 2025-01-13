@@ -197,15 +197,19 @@ class Tracker(Module):
     def __len__(self):
         return len(self.metrics) + len(self.others)
 
-    def add_variable(self, var_name: str):
+    def add_variable(self, var_name: str, exists_ok: bool = False):
         """
         Add a new variable to the tracker.
 
         Args:
             var_name (str): Name of the variable.
+            exists_ok (bool): Whether to ignore if the variable already exists. Defaults to False (raises warning!).
         """
         if var_name in self.metrics or var_name in self.others:
-            raise KeyError(f"Variable '{var_name}' already exists in tracker.")
+            if exists_ok:
+                return
+            else:
+                raise KeyError(f"Variable '{var_name}' already exists in tracker.")
         self.others[var_name] = NonMetricVariable()
 
     def update(self, metric_val_pairs: Dict[str, Numeric], count: Numeric = 1):

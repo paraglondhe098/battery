@@ -1,20 +1,31 @@
 import logging
-from typing import Optional, List
+from typing import Optional, List, Callable
 from candle.utils.module import Module
+from bisect import insort_right
 
 
 class Callback(Module):
 
-    def __init__(self, priority: float = None, logger: Optional[logging.Logger] = None):
+    def __init__(self, priority: float = float('inf'), logger: Optional[logging.Logger] = None):
         super().__init__(name="Callback")
         self._trainer = None
         self.priority = priority
         self.__use_trainer_logger = True if logger is None else False
+        self.insertion_order = None
 
     def set_trainer(self, trainer: 'TrainerModule'):
         self._trainer = trainer
         if self.__use_trainer_logger:
             self.logger = trainer.logger
+
+    def is_unique(self):
+        counts = 0
+        for callback in self.trainer.callbacks.callbacks:
+            if isinstance(callback, self.__class__):
+                counts += 1
+                if counts > 1:
+                    return False
+        return True
 
     @property
     def trainer(self) -> 'TrainerModule':
@@ -175,6 +186,8 @@ class CallbacksList(Module):
         super().__init__()
         self.trainer = trainer
         self.callbacks = []
+        self._insertion_counter = 0
+
         if callbacks:
             for cb in callbacks:
                 self.append(cb)
@@ -183,7 +196,11 @@ class CallbacksList(Module):
         if callback not in self.callbacks:
             if isinstance(callback, Callback):
                 callback.set_trainer(self.trainer)
-                self.callbacks.append(callback)
+                callback.insertion_order = self._insertion_counter
+                self._insertion_counter += 1
+                insort_right(self.callbacks, callback, key=lambda x: (x.priority, x.insertion_order))
+                # self.callbacks.append(callback)
+                # self.callbacks.sort(key=lambda x: (x.priority, x.insertion_order))
             else:
                 raise TypeError("callbacks should be inherited from Callback class (from torchtrainer.callbacks)")
         else:
@@ -193,21 +210,27 @@ class CallbacksList(Module):
         if callback in self.callbacks:
             self.callbacks.remove(callback)
 
-    def run_all(self, pos: str) -> Optional[List[str]]:
-        responses = []
+    def run_all(self, pos: str):
         for cb in self.callbacks:
             try:
                 run_at_pos = getattr(cb, pos, None)
-                response = run_at_pos()
-                if response:
-                    responses.append(response)
+                run_at_pos()
             except Exception as e:
                 self.logger.warning(f"Error in callback {cb} during calling of method '{pos}': {e}")
                 raise e
-        return responses
+
+    def __getitem__(self, idx):
+        return self.callbacks[idx]
 
     def __len__(self):
         return len(self.callbacks)
 
     def __str__(self):
         return str(self.callbacks)
+
+
+class CallbackLambda(Callback):
+    def __init__(self, pos: str, func: Callable, priority: float = float('inf'),
+                 logger: Optional[logging.Logger] = None):
+        super().__init__(priority=priority, logger=logger)
+        setattr(self, pos, func)

@@ -1,3 +1,5 @@
+from os.path import exists
+
 from candle.callbacks import Callback
 
 
@@ -6,7 +8,7 @@ class LRTracker(Callback):
         super().__init__()
 
     def before_training_starts(self):
-        self.tracker.add_variable("lr")
+        self.tracker.add_variable("lr", exists_ok=True)
 
     @staticmethod
     def get_lr(optimizer):
