@@ -51,6 +51,7 @@ temp/
 upload_script.txt
 candle/callbacks_old.py
 candle/metrics_old.py
+candle/trainer_old.py
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
