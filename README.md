@@ -209,7 +209,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version
 
-Current version: `0.0.10`
+Current version: `0.0.11`
 
 [//]: # (## Contact)
 
