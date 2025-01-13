@@ -92,17 +92,12 @@ es = EarlyStopping(basis="val_accuracy", metric_minimize=False, patience=10, thr
 
 trainer = Trainer( model,
                  criterion=loss_fn,
-                 input_shape=(1,64,64),
                  optimizer=optimizer,
-                 display_time_elapsed=True,
                  metrics=[accuracy, precision],
                  callbacks=[es],
                  device=torch.device('cuda'),
                  use_amp=True # Mixed precision training
                    )
-
-# Optional: Check model summary (Only works when correct input shape is provided).
-trainer.model_summary()
 
 # Step 3: Start training
 history = trainer.fit(train_loader,val_loader, epochs=10)
@@ -169,8 +164,7 @@ class CustomCallback(Callback):
         ...
         
 # Add callback to the trainer
-trainer.add_callback(early_stopping)
-trainer.add_callback(CustomCallback())
+trainer = Trainer(..., callbacks=[early_stopping, CustomCallback()])
 ```
 Callbacks have access to trainer, metrics tracker, stopping main training loop,
 latest metric values, learning rate, etc. at around 20 pre-defined positions including
