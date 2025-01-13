@@ -54,7 +54,7 @@ class EarlyStopping(Callback):
 
         if improved:
             self.best_value = current_value
-            self.trainer.best_state_dict = copy.deepcopy(self.model.state_dict())
+            self.trainer._best_state_dict = copy.deepcopy(self.model.state_dict())
             self.best_epoch = self.trainer.current_epoch
             self.patience = self.initial_patience  # Reset patience
         else:
@@ -69,7 +69,7 @@ class EarlyStopping(Callback):
 
         # Check stopping conditions
         is_last_epoch = (self.trainer.current_epoch == self.trainer.epochs)
-        should_stop = self.patience == 0 or (is_last_epoch and self.trainer.best_state_dict)
+        should_stop = self.patience == 0 or (is_last_epoch and self.trainer._best_state_dict)
 
         if should_stop:
             self.trainer.STOPPER = True
@@ -81,7 +81,7 @@ class EarlyStopping(Callback):
 
             if self.restore_best_weights:
                 # Restore best weights
-                self.trainer.model.load_state_dict(self.trainer.best_state_dict)
+                self.trainer.model.load_state_dict(self.trainer._best_state_dict)
                 self.best_weights_restored = True
 
                 # Build summary message
@@ -108,4 +108,4 @@ class EarlyStopping(Callback):
             res = {"epoch": self.best_epoch}
             for metric_name in self.tracker.metrics:
                 res[metric_name] = self.tracker.metrics[metric_name].records[self.best_epoch]
-            self.trainer.final_metrics = res
+            self.trainer._final_metrics = res

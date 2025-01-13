@@ -1,20 +1,17 @@
 import logging
-# from torch.cuda.amp import GradScaler, autocast -> deprecated
 from torch.amp import GradScaler, autocast
 from candle.utils.tracking import Tracker
-from candle.callbacks import Callback, ConsoleLogger
-from candle.trainers import ProgressBar
-from candle.trainers.base import TrainerBlueprint
+from candle.callbacks import Callback
+from candle.trainers.base import TrainerModule
 from candle.metrics import Metric
 import torch
-from typing import Optional, List
+from typing import Optional, List, Callable
 from datetime import datetime
 import os
+import copy
 
 
-class BasicTrainer(TrainerBlueprint):
-    default_callbacks = [ConsoleLogger()]
-
+class Trainer(TrainerModule):
     def __init__(self, model: torch.nn.Module,
                  criterion: torch.nn.Module,
                  optimizer: torch.optim.Optimizer,
@@ -25,20 +22,33 @@ class BasicTrainer(TrainerBlueprint):
                  device: Optional[torch.device] = None,
                  logger: Optional[logging.Logger] = None):
 
+        super().__init__(model=model, name="SimpleTrainer", device=(device or torch.device('cpu')), logger=logger)
+
+        self.num_batches = None
+        self.batch_size = None
+        self.__current_epoch = 0
+
         self.metrics = [metric.name for metric in metrics]
-        super().__init__(name="SimpleTrainer", callbacks=callbacks,
-                         clear_cuda_cache=clear_cuda_cache,
-                         use_amp=use_amp, logger=logger,
-                         device=(device or torch.device('cpu')),
-                         )
         self.metric_fns = {metric.name: metric for metric in
                            metrics}
-        self.progress_bar = ProgressBar([])
-        self.model = self.to_device(model)
+
         self.criterion = criterion
         self.optimizer = optimizer
+        self.clear_cuda_cache = clear_cuda_cache
+        self.use_amp = use_amp and self.device.type == 'cuda'
         self.scaler = GradScaler(enabled=self.use_amp)
-        self.best_state_dict = None
+        self.tracker = self.init_tracker()
+
+        self.STOPPER = False
+        self.external_events = set()
+        self._best_state_dict = None
+        self._final_metrics = {}
+
+        self.std_pos = {'on_train_batch_begin', 'on_train_batch_end', 'on_epoch_begin', 'on_epoch_end',
+                        'on_test_batch_begin', 'on_test_batch_end', 'on_predict_batch_begin', 'on_predict_batch_end',
+                        'on_train_begin', 'on_train_end', 'on_test_begin', 'on_test_end', 'on_predict_begin',
+                        'on_predict_end', 'before_training_starts', 'after_training_ends', 'before_backward_pass'}
+        self.callbacks = self.set_callbacks(callbacks or [])
 
     def init_tracker(self):
         temp = self.metrics + ["loss"]
@@ -50,72 +60,134 @@ class BasicTrainer(TrainerBlueprint):
         tracker.logger = self.logger
         return tracker
 
+    def _run_callbacks(self, pos: str) -> List[Optional[str]]:
+        return self.callbacks.run_all(pos)
+
+    def training_step_forward(self, inputs, labels):
+        self.optimizer.zero_grad()
+        with autocast(device_type=self.device.type, enabled=self.use_amp):
+            outputs = self.model(inputs)
+            loss = self.criterion(outputs, labels)
+        return loss, outputs
+
+    def training_step_backward(self, loss):
+        self.scaler.scale(loss).backward()
+        self.scaler.step(self.optimizer)
+        self.scaler.update()
+
+    def update_metrics(self, pos, labels, outputs, loss=None):
+        if pos == "train":
+            self.tracker.update({"loss": loss})
+            self.tracker.update({metric: self.metric_fns[metric](labels, outputs) for metric in self.metrics})
+        elif pos == "val":
+            self.tracker.update({"val_loss": loss})
+            self.tracker.update({"val_" + metric: self.metric_fns[metric](labels, outputs) for metric in self.metrics})
+        else:
+            raise ValueError(f"Invalid position '{pos}'. Must be one of 'train' or 'val'.")
+
     def train(self, train_loader: torch.utils.data.DataLoader) -> None:
 
-        # Set to training mode
         self.model.train()
         self._run_callbacks(pos="on_train_begin")
-        for inputs, labels in self.progress_bar(position='train',
+        for inputs, labels in self.progress_bar(position='training',
                                                 iterable=train_loader,
                                                 desc=self.epoch_headline):
             inputs, labels = inputs.to(self.device), labels.to(self.device)
             self._run_callbacks(pos="on_train_batch_begin")
+            loss, outputs = self.training_step_forward(inputs, labels)
 
-            # One Batch Training
-            self.optimizer.zero_grad()
-
-            with autocast(device_type=self.device.type, enabled=self.use_amp):
-                outputs = self.model(inputs)
-                loss = self.criterion(outputs, labels)
             self._run_callbacks(pos="before_backward_pass")
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            self.training_step_backward(loss)
 
             with torch.no_grad():
-                self.tracker.update({"loss": loss.item()})
-                self.tracker.update({metric: self.metric_fns[metric](labels, outputs) for metric in self.metrics})
+                self.update_metrics("train", labels, outputs, loss.item())
             self._run_callbacks(pos="on_train_batch_end")
         self._run_callbacks(pos="on_train_end")
 
     @torch.no_grad()
+    def eval_step_forward(self, inputs, labels):
+        with autocast(device_type=self.device.type, enabled=self.use_amp):
+            outputs = self.model(inputs)
+            loss = self.criterion(outputs, labels)
+        return loss, outputs
+
+    @torch.no_grad()
     def validate(self, val_loader: torch.utils.data.DataLoader) -> None:
-        # Set to the evaluation mode
         self.model.eval()
         self._run_callbacks(pos="on_test_begin")
         for inputs, labels in self.progress_bar(position='validation', iterable=val_loader, desc="Validation: "):
             self._run_callbacks(pos="on_test_batch_begin")
             inputs, labels = inputs.to(self.device), labels.to(self.device)
-            with autocast(device_type=self.device.type, enabled=self.use_amp):
-                outputs = self.model(inputs)
-                val_loss = self.criterion(outputs, labels)
 
-            self.tracker.update({"val_loss": val_loss.item()})
-            self.tracker.update(
-                {"val_" + metric: self.metric_fns[metric](labels, outputs) for metric in self.metrics})
+            val_loss, outputs = self.eval_step_forward(inputs, labels)
+
+            self.update_metrics("val", labels, outputs, val_loss.item())
             self._run_callbacks(pos="on_test_batch_end")
         self._run_callbacks(pos="on_test_end")
 
-    def pre_run(self):
-        pass
+    @property
+    def current_epoch(self):
+        return self.__current_epoch
 
     def reset(self):
         self.__current_epoch = 0
         self.STOPPER = False
-        self.best_state_dict = None
-        self.final_metrics = {}
+        self._best_state_dict = None
+        self._final_metrics = {}
         self.tracker = self.init_tracker()
 
-    def post_run(self):
-        pass
+    def fit(self, train_loader: torch.utils.data.DataLoader, val_loader: torch.utils.data.DataLoader,
+            epochs: int = 1, epoch_start: int = 0):
+        """
+        Trains the model for the specified number of epochs.
 
-    def get_state_dict(self):
-        return self.model.state_dict()
+        Args:
+            train_loader (torch.utils.data.DataLoader): DataLoader for training datasets.
+            val_loader (torch.utils.data.DataLoader): DataLoader for validation datasets.
+            epoch_start (int): from what epoch number we should start
+            epochs (int): No. of epochs to run for
 
-    def load_state_dict(self, state_dict):
-        return self.model.load_state_dict(state_dict)
+        Returns:
+            None
+        """
+        self.reset()
+        self.epochs = epochs
+        self.num_batches = len(train_loader)
+        self.batch_size = train_loader.batch_size
+        on_gpu = True if self.device.type == 'cuda' else False
+
+        self._run_callbacks(pos="before_training_starts")
+        for self.__current_epoch in range(epoch_start, epoch_start + self.epochs):
+            self._run_callbacks(pos="on_epoch_begin")
+
+            if on_gpu and self.clear_cuda_cache:
+                torch.cuda.empty_cache()
+
+            self.train(train_loader)
+            self.validate(val_loader)
+
+            self._run_callbacks(pos="on_epoch_end")
+
+            self.tracker.snap_and_reset_all()
+
+            if self.STOPPER:
+                break
+
+        self._run_callbacks(pos="after_training_ends")
+        return self.tracker.get_history()
+
+    @property
+    def final_metrics_(self):
+        return self._final_metrics or self.tracker.get_final_values(self.current_epoch)
+
+    @property
+    def best_state_dict_(self):
+        return self._best_state_dict or copy.deepcopy(self.model.state_dict())
 
     @torch.no_grad()
+    def prediction_step(self, data):
+        return self.model(data)
+
     def predict(self, data_loader: torch.utils.data.DataLoader) -> torch.Tensor:
         """Predicts outputs for the given DataLoader.
 
@@ -129,10 +201,12 @@ class BasicTrainer(TrainerBlueprint):
         self._run_callbacks(pos="on_predict_begin")
 
         all_predictions = []
-        for batch_idx, data in enumerate(data_loader):
+        for batch_idx, data in self.progress_bar(position="prediction",
+                                                 iterable=enumerate(data_loader),
+                                                 desc="Processing"):
             self._run_callbacks(pos="on_predict_batch_begin")
             data = data.to(self.device)
-            predictions = self.model(data)
+            predictions = self.prediction_step(data)
             all_predictions.append(predictions)
             self._run_callbacks(pos="on_predict_batch_end")
 
@@ -171,8 +245,7 @@ class BasicTrainer(TrainerBlueprint):
 
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            metric_value = (self.final_metrics.get(metric_name, None) if self.final_metrics else None) or \
-                           self.tracker.metrics[metric_name].latest
+            metric_value = self.final_metrics_[metric_name]
             save_dir = os.path.join(path, f"{timestamp}=={metric_name}=={metric_value:.4f}")
             os.makedirs(save_dir, exist_ok=True)
 
@@ -248,3 +321,34 @@ class BasicTrainer(TrainerBlueprint):
         except Exception as e:
             self.logger.warning(f"Failed to load progress!")
             raise e
+
+    class __CallbackTemplate(Callback):
+        def __init__(self):
+            super().__init__()
+
+    def add_event(self, pos: str):
+        """
+        Write a custom callback event without explicitly creating a new callback class.
+        """
+
+        def decorator(event: Callable) -> Optional[Callable]:
+            # Check if the event is already registered
+            if event.__name__ in self.external_events:
+                return None  # Do nothing if event already exists
+
+            # Create a new callback template
+            ct = self.__CallbackTemplate()
+
+            # Register the event if the position is valid
+            if pos in self.std_pos:
+                setattr(ct, pos, event)
+            else:
+                raise AttributeError(f"Invalid method '{pos}'. Must be one of {self.std_pos}.")
+
+            # Add the callback template to the callback list
+            self.external_events.add(event.__name__)
+            self.callbacks.append(ct)
+
+            return event
+
+        return decorator

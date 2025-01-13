@@ -13,7 +13,7 @@ class ConsoleLogger(Callback):
                  display_time_elapsed: bool = True,
                  round_off_upto: int = 5,
                  report_in_one_line: bool = True,
-                 progress_bar_positions=("train",)):
+                 progress_bar_positions=("training",)):
         super().__init__(priority=float('-inf'))
         self.epoch_headline = "EPOCH {}"
         self.separator = "  ||  " if report_in_one_line else "\n"

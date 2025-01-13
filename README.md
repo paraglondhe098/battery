@@ -62,7 +62,7 @@ from torch.utils.data import DataLoader
 from candle import Trainer
 from candle.metrics import Accuracy, Precision
 from candle.models.vision import BasicCNNClassifier
-from candle.callbacks import EarlyStopping
+from candle.callbacks import EarlyStopping, ConsoleLogger
 
 # Step 1: Initiate dataset and dataloader (See PyTorch documentation for more details)
 transform = transforms.Compose([
@@ -90,11 +90,17 @@ loss_fn = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 es = EarlyStopping(basis="val_accuracy", metric_minimize=False, patience=10, threshold=0.85)
 
+# ConsoleLogger is a callback to display training progress in console along with progress bars.
+cl = ConsoleLogger(display_time_elapsed=True,
+                   round_off_upto=2,
+                   report_in_one_line=True,
+                   progress_bar_positions=["training", "validation", "prediction"])
+
 trainer = Trainer( model,
                  criterion=loss_fn,
                  optimizer=optimizer,
                  metrics=[accuracy, precision],
-                 callbacks=[es],
+                 callbacks=[es, cl],
                  device=torch.device('cuda'),
                  use_amp=True # Mixed precision training
                    )
@@ -209,7 +215,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Version
 
-Current version: `0.0.11`
+Current version: `0.0.12`
 
 [//]: # (## Contact)
 
